@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><record_update table="sp_widget">
     <sp_widget action="INSERT_OR_UPDATE">
         <category>custom</category>
-        <client_script><![CDATA[function($scope,$rootScope) {
+        <client_script><![CDATA[// 关键：新增 spUtil 依赖注入
+function($scope,$rootScope,spModal,spUtil) {
 	/* widget controller */
 	var c = this;
 
@@ -29,19 +30,37 @@
 			}
 		});
 	}
+
+	// 核心修改：增强 deleteNote 函数，添加提示逻辑
 	c.deleteNote = function() {
+		// 先保存当前笔记标题（用于提示）
+		var deletedNoteTitle = c.data.title || 'Untitled Note';
 		c.server.get({
 			action: 'deleteNote',
 			noteID: c.data.noteID
 		}).then(function(r) {
+			// 校验数据库是否真的删除成功
+			if (r.data.deleted) {
+				// 调用 spUtil 显示删除成功提示
+				spUtil.addTrivialMessage('The ' + deletedNoteTitle + ' record has been deleted.');
+			}
+			
+			// 原有逻辑保留：通知列表删除条目 + 清空当前编辑区
 			$rootScope.$emit('deleteNote', c.data.noteID);
 			c.data.title = '';
 			c.data.note = '';
 			c.data.noteID = '';
 		});
 	}
-}
-]]></client_script>
+	
+  c.confirmDelete = function(){
+     spModal.confirm("Are you sure you want to delete this Note record?").then(function(confirmed){
+       if(confirmed){
+       c.deleteNote();
+       }
+     });
+   }
+}]]></client_script>
         <controller_as>c</controller_as>
         <css/>
         <data_table>sp_instance</data_table>
@@ -58,10 +77,16 @@
         <public>false</public>
         <roles/>
         <script><![CDATA[(function() {
+	// 初始化删除结果变量
+	data.deleted = false;
+	data.noteTitle = '';
 
 	if (input && input.noteID) {
 		var note = new GlideRecord('x_snc_createnotes_note');
 		if (note.get(input.noteID)) {
+			// 保存笔记标题（用于前端提示）
+			data.noteTitle = note.title.getDisplayValue();
+
 			if (input.action == 'getNote') {
 				data.note = {};
 				$sp.getRecordValues(data.note, note, "title, note, sys_id");
@@ -79,6 +104,12 @@
 
 			else if (input.action == 'deleteNote') { 
 				note.deleteRecord(); 
+				
+				// 校验：确认记录已从数据库删除
+				var checkNote = new GlideRecord('x_snc_createnotes_note');
+				if (!checkNote.get(input.noteID)) {
+					data.deleted = true; // 仅当记录不存在时，标记删除成功
+				}
 			}
 		}
 	}
@@ -88,25 +119,26 @@
         <sys_created_by>admin</sys_created_by>
         <sys_created_on>2019-05-30 18:16:57</sys_created_on>
         <sys_id>7a7543e8db3133000613a08a4896195e</sys_id>
-        <sys_mod_count>8</sys_mod_count>
+        <sys_mod_count>17</sys_mod_count>
         <sys_name>Notes  Body</sys_name>
         <sys_package display_value="CreateNotes" source="x_snc_createnotes">df5fd9a5090232007f44e1046c8ff69f</sys_package>
         <sys_policy/>
         <sys_scope display_value="CreateNotes">df5fd9a5090232007f44e1046c8ff69f</sys_scope>
         <sys_update_name>sp_widget_7a7543e8db3133000613a08a4896195e</sys_update_name>
         <sys_updated_by>admin</sys_updated_by>
-        <sys_updated_on>2019-05-30 19:09:11</sys_updated_on>
+        <sys_updated_on>2026-03-03 05:17:55</sys_updated_on>
         <template><![CDATA[<div class="panel panel-default" ng-show="c.data.noteID">
   <div class="panel-heading clearfix">
     <div class="row">
       <div class="col-md-11">
         <input class="form-control" id="note-title" ng-model="c.data.title" ng-change="c.updateNote('title')" ng-model-options="{debounce: 1000}"/>
       </div>
-      <div class="col-md-1"> 
-        <button class="btn btn-danger pull-right" ng-click="c.deleteNote()"> 
-          <span class="glyphicon glyphicon-trash"></span> 
+<!--      <div class="col-md-1"> 
+        <button class="btn btn-danger pull-right" ng-click="c.confirmDelete()"> 
+       <span class="glyphicon glyphicon-trash"></span> 
         </button> 
-      </div>
+      </div>  -->
+      <delete-button-confirm></delete-button-confirm>
     </div>
   </div>
   <div class="panel-body">
